@@ -175,3 +175,5 @@ cython_debug/
 "uvicorn" 
 uvicorn 
 __pycache__\\ 
+"git"    
+"type"   
