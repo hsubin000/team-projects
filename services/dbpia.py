@@ -23,6 +23,14 @@ def fetch_recommendations(pyear, pmonth, category) -> RecommendationResponse:
     root = ET.fromstring(resp.text)
     if root.tag == "error":
         code = root.findtext(".//Code") or "Unknown"
+        # E0016: 검색 결과 없음 → 빈 응답으로 처리
+        if code == "E0016":
+            return RecommendationResponse(
+                totalcount=0,
+                pyymm=None,
+                recommendations=[]
+            )
+        # 그 외 오류는 그대로 예외로
         raise RuntimeError(f"DBpia 오류 코드: {code}")
 
     totalcount = int(root.findtext(".//totalcount") or 0)
