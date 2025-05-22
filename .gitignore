@@ -177,3 +177,4 @@ uvicorn
 __pycache__\\ 
 "git"    
 "type"   
+test.db
