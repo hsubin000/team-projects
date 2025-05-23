@@ -96,6 +96,7 @@
       <button id="open-signup">회원가입</button>
       <button id="open-login">로그인</button>
       <span id="greeting"></span>
+      <button id="open-mypage" style="display:none;">마이페이지</button>
       <button id="logout">로그아웃</button>
     </div>
 
@@ -192,12 +193,35 @@
     </div>
   </div>
 
+  <!-- 마이페이지 모달 -->
+  <div id="modal-mypage" class="modal">
+    <div class="modal-content">
+      <button class="modal-close" data-close="modal-mypage">&times;</button>
+      <h2>비밀번호 변경</h2>
+      <form id="mypage-form">
+        <div class="form-row">
+          <label>현재 비밀번호
+            <input type="password" name="old_password" required minlength="6">
+          </label>
+        </div>
+        <div class="form-row">
+          <label>새 비밀번호
+            <input type="password" name="new_password" required minlength="6">
+          </label>
+        </div>
+        <button type="submit">변경하기</button>
+      </form>
+      <div id="mypage-msg" class="message"></div>
+    </div>
+  </div>
+
   <script>
     // 모달 제어
     const openModal = id => document.getElementById(id).classList.add('active');
     const closeModal = id => document.getElementById(id).classList.remove('active');
     document.getElementById('open-signup').onclick = () => openModal('modal-signup');
     document.getElementById('open-login').onclick  = () => openModal('modal-login');
+    document.getElementById('open-mypage').onclick = () => openModal('modal-mypage');
     document.querySelectorAll('.modal').forEach(m => {
       m.addEventListener('click', e => e.target===m && closeModal(m.id));
     });
@@ -211,6 +235,7 @@
       document.getElementById('open-login').style.display  = 'none';
       document.getElementById('logout').style.display      = 'inline-block';
       document.getElementById('greeting').textContent      = `${username}님, 반갑습니다!`;
+      document.getElementById('open-mypage').style.display = 'inline-block';
     }
 
     // 로그아웃 처리
@@ -288,6 +313,29 @@
           `).join('')
         : '<p>추천된 논문이 없습니다.</p>';
     });
+
+    // 마이페이지(비밀번호 변경) 폼 처리
+    document.getElementById('mypage-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const data = Object.fromEntries(new FormData(e.target));
+      const token = localStorage.getItem('token');
+      const res = await fetch('/mypage/password', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(data)
+      });
+      if (res.ok) {
+        showMessage('mypage-msg','✅ 비밀번호가 변경되었습니다.');
+        setTimeout(()=>closeModal('modal-mypage'), 1000);
+      } else {
+        const err = await res.json();
+        showMessage('mypage-msg', err.detail || '❌ 변경 실패');
+      }
+    });
+
   </script>
 </body>
 </html>
