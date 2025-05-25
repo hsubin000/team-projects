@@ -178,3 +178,9 @@ __pycache__\\
 "git"    
 "type"   
 test.db
+
+# .gitignore
+.env
+__pycache__/
+*.pyc
+test.db

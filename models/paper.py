@@ -2,7 +2,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 
 class Author(BaseModel):
-    order: Optional[str]
+    order: Optional[int]
     url:   Optional[str]
     name:  str
 
@@ -11,6 +11,8 @@ class Publication(BaseModel):
     name: Optional[str]
 
 class Recommendation(BaseModel):
+    id: Optional[int]
+    paper_id: Optional[int]
     title:        Optional[str]
     authors:      List[Author]
     publisher:    Publication
@@ -28,3 +30,6 @@ class RecommendationResponse(BaseModel):
     totalcount:      int
     pyymm:           Optional[str]
     recommendations: List[Recommendation]
+
+    class Config:
+        orm_mode = True

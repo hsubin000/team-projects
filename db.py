@@ -1,23 +1,31 @@
+# db.py
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-DATABASE_URL = "sqlite:///./test.db"  # 또는 "postgresql://user:pass@host:port/dbname"
+Base = declarative_base()
+
+# 모든 모델 import (순서는 중요 X, 단 import는 반드시 필요)
+import models.user
+import models.bookmark
+# import models.paper 등 필요한 것들
+
+DATABASE_URL = "sqlite:///./test.db"
 
 engine = create_engine(
     DATABASE_URL,
     connect_args={"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 )
+
+# (개발 중이라면) 기존 테이블 삭제
+Base.metadata.drop_all(bind=engine)
+# 테이블 생성
+Base.metadata.create_all(bind=engine)
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
 
 def get_db():
-    """
-    FastAPI 의존성 주입 함수.
-    요청마다 세션을 열고, 작업이 끝나면 닫아 줍니다.
-    """
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
-        

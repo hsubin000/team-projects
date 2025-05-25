@@ -1,6 +1,7 @@
 # services/dbpia.py
 
 import os
+import re
 import requests
 import xml.etree.ElementTree as ET
 from models.paper import Recommendation, RecommendationResponse
@@ -67,6 +68,11 @@ def fetch_recommendations(
 
     items = []
     for node in root.findall(".//item"):
+        # link_api 안의 nodeId 추출
+        link_api = node.findtext("link_api") or ""
+        m = re.search(r"nodeId=(\d+)", link_api)
+        node_id = int(m.group(1)) if m else None
+
         # authors 파싱
         authors = []
         ap = node.find("authors")
@@ -75,10 +81,11 @@ def fetch_recommendations(
                 name = a.get("name") or a.findtext("name")
                 if name:
                     authors.append({
-                        "order": a.get("order"),
+                        "order": int(a.get("order")) if a.get("order") else None,
                         "url": a.get("url"),
                         "name": name
                     })
+            # 단순 텍스트로 콤마 구분된 경우
             if not authors and ap.text:
                 for nm in ap.text.split(","):
                     nm = nm.strip()
@@ -99,8 +106,10 @@ def fetch_recommendations(
             "name": (publ.get("name") if publ is not None else None) or (publ.findtext("name") if publ is not None else None)
         }
 
-        # 기타 필드
+        # item 정보 구성 (실제 논문 식별자 포함)
         items.append({
+            "id": node_id,
+            "paper_id": node_id,
             "title": node.findtext("title"),
             "authors": authors,
             "publisher": publisher,
@@ -112,13 +121,33 @@ def fetch_recommendations(
             "preview_yn": node.findtext("preview_yn"),
             "preview": node.findtext("preview"),
             "link_url": node.findtext("link_url"),
-            "link_api": node.findtext("link_api")
+            "link_api": link_api
         })
 
-    # 5) Pydantic 모델로 반환
+    # 5) Pydantic 모델로 변환하여 반환
     recs = [Recommendation(**item) for item in items]
     return RecommendationResponse(
         totalcount=totalcount,
         pyymm=pyymm,
         recommendations=recs
     )
+
+def fetch_paper_by_id(paper_id: int) -> dict | None:
+    """
+    paper_id(nodeId)로 논문 하나를 조회해 {paper_id, title} 반환.
+    실패 시 None.
+    """
+    params = {
+        "key": API_KEY,
+        "target": "rated_art",
+        "nodeId": str(paper_id),
+        "perPage": "1",
+    }
+    resp = requests.get(DBPIA_URL, params=params, timeout=5)
+    resp.raise_for_status()
+    root = ET.fromstring(resp.text)
+    item = root.find(".//item")
+    if item is None:
+        return None
+    title = item.findtext("title", "").strip() or f"Paper #{paper_id}"
+    return { "paper_id": paper_id, "title": title }

@@ -1,82 +1,75 @@
-# routers/auth.py
+from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from jose import JWTError, jwt
 from sqlalchemy.orm import Session
-from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 
-from db import get_db
-from models.user import User
-from schemas.user import UserCreate, UserOut
 from services.auth import (
-    register_user,
     authenticate_user,
     create_access_token,
+    register_user,
     SECRET_KEY,
-    ALGORITHM
+    ALGORITHM,
+    ACCESS_TOKEN_EXPIRE_MINUTES
 )
-from jose import JWTError, jwt
+from db import get_db
+from schemas.user import UserCreate, Token, UserOut
+from models.user import User as UserModel
 
-router = APIRouter(prefix="/auth", tags=["auth"])
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
+router = APIRouter(tags=["auth"])
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
-
-@router.post("/register", response_model=UserOut)
-def register(user_in: UserCreate, db: Session = Depends(get_db)):
-    """
-    회원가입:
-    - 중복된 아이디면 400, "중복된 아이디입니다!" 반환
-    - 성공 시 생성된 User 객체(JSON) 반환
-    """
-    try:
-        user = register_user(db, user_in.username, user_in.password)
-    except ValueError as e:
-        # 서비스 레이어에서 던진 "중복된 아이디입니다!" 를 그대로 돌려줌
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+@router.post("/signup", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+def signup(user_in: UserCreate, db: Session = Depends(get_db)):
+    existing = db.query(UserModel).filter(UserModel.username == user_in.username).first()
+    if existing:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="이미 등록된 사용자입니다.")
+    user = register_user(db, user_in)
     return user
 
-
-@router.post("/token")
+@router.post("/login", response_model=Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    """
-    로그인:
-    - 존재하지 않는 아이디면 400, "존재하지 않는 아이디입니다!" 반환
-    - 비밀번호 불일치면 400, "비밀번호를 다시 확인해 주세요!" 반환
-    - 성공 시 토큰을 {"access_token":..., "token_type":"bearer"} 반환
-    """
-    try:
-        user = authenticate_user(db, form_data.username, form_data.password)
-    except LookupError as e:
-        # 서비스 레이어에서 던진 "존재하지 않는 아이디입니다!" 
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except PermissionError as e:
-        # 서비스 레이어에서 던진 "비밀번호를 다시 확인해 주세요!"
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-
-    access_token = create_access_token({"sub": user.username})
+    user = authenticate_user(db, form_data.username, form_data.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="아이디 또는 비밀번호가 올바르지 않습니다.",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+    expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.username}, expires_delta=expires
+    )
     return {"access_token": access_token, "token_type": "bearer"}
 
-
 @router.get("/me", response_model=UserOut)
-def read_current_user(
-    token: str = Depends(oauth2_scheme),
-    db: Session = Depends(get_db)
-):
-    """
-    토큰에서 사용자명(sub) 꺼내서 DB 조회 후 User 반환
-    검증 실패 시 401 에러
-    """
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="유효한 자격증명이 아닙니다."
-    )
+def read_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    # 토큰에서 사용자명(sub) 추출
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
-        if not username:
-            raise credentials_exception
+        if username is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="인증 정보를 확인할 수 없습니다.")
     except JWTError:
-        raise credentials_exception
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="인증 정보를 확인할 수 없습니다.")
+    # DB에서 사용자 조회
+    user = db.query(UserModel).filter(UserModel.username == username).first()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="사용자를 찾을 수 없습니다.")
+    return UserOut.from_orm(user)
 
-    user = db.query(User).filter_by(username=username).first()
-    if not user:
-        raise credentials_exception
-    return user
+
+def get_current_user_model(
+    token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)
+) -> UserModel:
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="인증 정보를 확인할 수 없습니다.")
+    except JWTError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="인증 정보를 확인할 수 없습니다.")
+    user = db.query(UserModel).filter(UserModel.username == username).first()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="사용자를 찾을 수 없습니다.")
+    return user  # 👈 이게 핵심! UserModel(DB 객체) 반환
