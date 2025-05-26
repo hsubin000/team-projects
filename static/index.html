@@ -320,24 +320,39 @@
     function renderRecommendations(recs) {
       loadBookmarksSet().then(bmMap => {
         const html = recs.map(item => {
-        // DBpia가 내려주는 고유 식별자는 paper_id입니다.
-        // (없으면 id 필드를 쓰되, 보통은 paper_id가 있으니 여기만 씁니다)
-        const pid = Number(item.paper_id ?? item.id);
+          // 1) link_api에서 "id=NODE12345678" 형식으로 nodeId(접두사 포함) 추출
+          const api = item.link_api || "";
+          const m   = api.match(/id=(NODE\d+)/);
+          const nodeIdParam = m ? m[1] : null;
+          // (fallback) paper_id 숫자만 있다면 접두사 붙여서 사용
+          const nodeId = nodeIdParam || `NODE${item.paper_id}`;
 
+          // 2) 올바른 완전경로 URL 생성
+          const detailUrl = `https://www.dbpia.co.kr/journal/articleDetail?nodeId=${nodeId}`;
 
+          // 3) 북마크 여부
+          const pid = item.paper_id;
           const bookmarked = bmMap[pid] !== undefined;
+
           return `
             <div class="paper" data-paper-id="${pid}">
               <strong>${item.title}</strong>
               <em>저자: ${item.authors.map(a => a.name).join(', ')}</em>
               <p>간행물: ${item.publication?.name || 'N/A'}</p>
-              <a href="${item.link_url}" target="_blank">상세 보기</a>
+
+              <a href="${detailUrl}"
+                target="_blank" rel="noopener noreferrer"
+                style="display:inline-block; margin:4px 0;
+                        font-size:0.9em; color:#007BFF; text-decoration:none;">
+                상세 보기
+              </a>
+
               <button class="bookmark-btn${bookmarked?' bookmarked':''}"
-                  data-paper-id="${pid}"
-                  data-paper-title="${item.title.replace(/"/g,'&quot;')}"
-                  data-paper-link="${item.link_url}"
-                  data-bookmark-id="${bookmarked?bmMap[pid]:''}">
-                ${bookmarked ? '즐겨찾기 해제' : '즐겨찾기 추가'}
+                      data-paper-id="${pid}"
+                      data-paper-title="${item.title.replace(/"/g,'&quot;')}"
+                      data-paper-link="${detailUrl}"
+                      data-bookmark-id="${bookmarked?bmMap[pid]:''}">
+                ${bookmarked?'즐겨찾기 해제':'즐겨찾기 추가'}
               </button>
             </div>
           `;
@@ -345,6 +360,7 @@
         document.getElementById('result').innerHTML = html;
       });
     }
+
 
     // 북마크 추가/삭제 핸들러
     document.getElementById('result').addEventListener('click', async e => {

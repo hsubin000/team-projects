@@ -68,10 +68,18 @@ def fetch_recommendations(
 
     items = []
     for node in root.findall(".//item"):
-        # link_api 안의 nodeId 추출
+        # link_api 에서 nodeId 또는 id=NODE##### 값 추출
         link_api = node.findtext("link_api") or ""
+        node_id = None
+        # 1) nodeId=12345 형태
         m = re.search(r"nodeId=(\d+)", link_api)
-        node_id = int(m.group(1)) if m else None
+        if m:
+            node_id = int(m.group(1))
+        else:
+            # 2) id=NODE12345 형태
+            m2 = re.search(r"id=NODE(\d+)", link_api)
+            if m2:
+                node_id = int(m2.group(1))
 
         # authors 파싱
         authors = []
